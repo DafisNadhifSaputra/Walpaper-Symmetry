@@ -164,7 +164,7 @@ h3 {
 }
 #canvas.cursor-pencil {
     /* Ensure pencil.png is in the same directory or provide the correct path */
-    cursor: url('pencil.png') 0 32, auto; 
+    cursor: url('pencil.png') 6 24, auto; 
 }
 #canvas.cursor-crosshair {
     cursor: crosshair;
@@ -1247,7 +1247,7 @@ function selectCursor(cursorType) {
     canvas.style.cursor = ''; // Clear inline style first
 
     if (currentCursor === 'pencil') {
-        canvas.style.cursor = `url('${pencilCursorPath}') 0 32, auto`;
+        canvas.style.cursor = `url('${pencilCursorPath}') 6 24, auto`;
         canvas.classList.add('cursor-pencil');
     } else if (currentCursor === 'crosshair') {
         canvas.style.cursor = 'crosshair';
