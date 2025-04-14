@@ -1,0 +1,2138 @@
+<!DOCTYPE html>
+<!--
+    Web page written by David Eck, http://math.hws.edu/eck/index.html
+    You can do anything you like with this web page and with the code, but
+    if you use a substantial portion of it, you should include attribution
+    in the source code.
+    
+    June 2017: Added freehand drawing tool.
+    
+    November 2023: Some significant changes...
+        1) Added saving and loading local files.
+        2) For the groups p1 and p2, changed the handling of
+           fundamental regions that are non-rectangular parallelograms.
+           Previously, an Angle was specified, but that never really
+           worked correctly.  Now, a Row Offset gives the amount by which
+           one row of duplicates is horizontally offset from the previous
+           row.  Row Offset zero gives a rectangular fundamental region.
+        3) Values for translation1, translation2, and row offset can now
+           only change when "Apply" button is clicked or Enter is typed
+           in an input box (or as part of a file load).  Previously, they
+           could change whenever drawAll() was called.
+        4) The default tool when the app is opened is now the Freehand
+           tool, and the default group is p4m, so someone who just
+           starts drawing sees something more interesting.
+        5) The default 2nd Translation is now equal to Translation.
+           (Previously, the values were 100 and 150, now both are 150.)
+-->
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wallpaper Symmetry</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style type="text/css">
+:root {
+    --primary-color: #3498db;
+    --secondary-color: #2c3e50;
+    --accent-color: #e74c3c;
+    --bg-color: #f5f5f5;
+    --text-color: #333;
+    --card-bg: #fff;
+    --border-color: #ddd;
+    --button-bg: #3498db;
+    --button-hover: #2980b9;
+    --canvas-bg: #fff;
+    --header-bg: #2c3e50;
+    --header-text: #fff;
+    --tool-active: #e74c3c;
+    --transition-speed: 0.3s;
+}
+
+.dark-mode {
+    --primary-color: #00a8ff;
+    --secondary-color: #1e272e;
+    --accent-color: #ff6b6b;
+    --bg-color: #121212;
+    --text-color: #f0f0f0;
+    --card-bg: #1a1a1a;
+    --border-color: #333;
+    --button-bg: #00a8ff;
+    --button-hover: #0097e6;
+    --canvas-bg: #2d3436;
+    --header-bg: #1e272e;
+    --header-text: #f0f0f0;
+    --tool-active: #ff6b6b;
+}
+
+* {
+    box-sizing: border-box;
+    transition: background-color var(--transition-speed), color var(--transition-speed);
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    min-height: 100vh;
+}
+
+.container {
+    width: 100%;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 15px;
+}
+
+header {
+    background-color: var(--header-bg);
+    color: var(--header-text);
+    padding: 15px 0;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    position: relative;
+    z-index: 10;
+}
+
+h2, h3 {
+    text-align: center;
+    color: var(--header-text);
+    font-weight: bold;
+    margin: 0;
+}
+
+h2 {
+    font-size: 1.8rem;
+    padding: 10px 0;
+}
+
+h3 {
+    font-size: 1.2rem;
+    opacity: 0.9;
+}
+
+#error {
+    color: var(--accent-color);
+    font-weight: bold;
+    display: block;
+    text-align: center;
+    min-height: 24px;
+    padding: 5px;
+    transition: opacity 0.3s;
+}
+
+.main-content {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    padding: 15px 0;
+}
+
+.sidebar {
+    flex: 1;
+    min-width: 200px;
+    background: var(--card-bg);
+    border-radius: 8px;
+    padding: 15px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+
+.canvas-container {
+    flex: 3;
+    min-width: 300px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+#canvas {
+    width: 100%;
+    height: auto;
+    max-width: 800px;
+    background-color: var(--canvas-bg);
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    /* Default cursor is crosshair */
+    cursor: crosshair; 
+    transition: box-shadow 0.3s, cursor 0.1s; /* Added cursor transition */
+}
+
+/* Cursor styles */
+#canvas.cursor-default {
+    cursor: default;
+}
+#canvas.cursor-pencil {
+    /* Ensure pencil.png is in the same directory or provide the correct path */
+    cursor: url('pencil.png') 0 32, auto; 
+}
+#canvas.cursor-crosshair {
+    cursor: crosshair;
+}
+
+#canvas:hover {
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+}
+
+.loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s;
+}
+
+.loading-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.spinner {
+    width: 50px;
+    height: 50px;
+    border: 5px solid rgba(255,255,255,0.3);
+    border-radius: 50%;
+    border-top-color: var(--primary-color);
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 15px;
+    justify-content: center;
+}
+
+.btn {
+    background-color: var(--button-bg);
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.btn:hover:not(:disabled) {
+    background-color: var(--button-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.btn:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-icon {
+    margin-right: 5px;
+}
+
+.settings-panel {
+    background-color: var(--card-bg);
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    margin-bottom: 15px;
+}
+
+.settings-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.setting-group {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+input[type="text"] {
+    width: 60px;
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background-color: var(--card-bg);
+    color: var(--text-color);
+}
+
+input[type="checkbox"] {
+    accent-color: var(--primary-color);
+}
+
+label {
+    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+}
+
+.tool-group, .symmetry-group, .linewidth-group {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+    gap: 8px;
+    margin-bottom: 15px;
+}
+
+.tool-btn, .symmetry-btn, .linewidth-btn {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 8px;
+    cursor: pointer;
+    text-align: center;
+    font-size: 13px;
+    transition: all 0.2s ease-in-out; /* Enhanced transition */
+    position: relative; /* Needed for potential pseudo-elements */
+    overflow: hidden; /* Clip potential overflow effects */
+}
+
+.tool-btn:hover, .symmetry-btn:hover, .linewidth-btn:hover {
+    background-color: rgba(var(--primary-color-rgb, 52, 152, 219), 0.1); /* Fallback RGB */
+    border-color: var(--primary-color);
+    transform: translateY(-3px) scale(1.03); /* Lift and slightly enlarge */
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1); /* Add shadow on hover */
+}
+
+.tool-btn.active, .symmetry-btn.active, .linewidth-btn.active {
+    background-color: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+    transform: translateY(0) scale(1); /* Reset transform for active */
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.2); /* Inner shadow for active */
+}
+
+/* Optional: Add a subtle pulse animation on hover */
+@keyframes pulse {
+    0% { transform: translateY(-3px) scale(1.03); }
+    50% { transform: translateY(-3px) scale(1.05); }
+    100% { transform: translateY(-3px) scale(1.03); }
+}
+
+/* Apply pulse animation on hover if desired */
+/*
+.tool-btn:hover, .symmetry-btn:hover, .linewidth-btn:hover {
+    animation: pulse 1.5s infinite ease-in-out;
+}
+*/
+
+.color-palette {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(30px, 1fr));
+    gap: 8px;
+    margin: 10px 0;
+}
+
+.color-swatch {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: transform 0.2s, border 0.2s;
+}
+
+.color-swatch:hover {
+    transform: scale(1.1);
+}
+
+.color-swatch.active {
+    border: 2px solid var(--text-color);
+}
+
+.color-input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+#colorPicker {
+    height: 40px;
+    width: 40px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.theme-toggle {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    background: transparent;
+    border: none;
+    color: var(--header-text);
+    font-size: 24px;
+    cursor: pointer;
+    transition: transform 0.3s;
+}
+
+.theme-toggle:hover {
+    transform: rotate(30deg);
+}
+
+.fullscreen-toggle {
+    position: absolute;
+    top: 15px;
+    right: 60px;
+    background: transparent;
+    border: none;
+    color: var(--header-text);
+    font-size: 20px;
+    cursor: pointer;
+    transition: transform 0.3s;
+}
+
+.fullscreen-toggle:hover {
+    transform: scale(1.1);
+}
+
+.tooltip {
+    position: relative;
+}
+
+.tooltip:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: var(--secondary-color);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 100;
+}
+
+.section-title {
+    font-weight: bold;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 5px;
+}
+
+@media (max-width: 768px) {
+    .main-content {
+        flex-direction: column;
+    }
+    
+    .sidebar {
+        order: 2;
+    }
+    
+    .canvas-container {
+        order: 1;
+    }
+    
+    .tool-group, .symmetry-group {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+/* Animation for newly added items */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.fade-in {
+    animation: fadeIn 0.5s ease-out;
+}
+
+/* Animation for the grid */
+@keyframes gridPulse {
+    0% { opacity: 0.3; }
+    50% { opacity: 0.7; }
+    100% { opacity: 0.3; }
+}
+
+.grid-animate {
+    animation: gridPulse 3s infinite;
+}
+
+/* For the group buttons with scrolling */
+.symmetry-container {
+    max-height: 300px;
+    overflow-y: auto;
+    padding-right: 5px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--primary-color) var(--card-bg);
+}
+
+.symmetry-container::-webkit-scrollbar {
+    width: 6px;
+}
+
+.symmetry-container::-webkit-scrollbar-track {
+    background: var(--card-bg);
+}
+
+.symmetry-container::-webkit-scrollbar-thumb {
+    background-color: var(--primary-color);
+    border-radius: 6px;
+}
+
+/* Responsive canvas scaling */
+@media (max-width: 600px) {
+    #canvas {
+        max-width: 100%;
+    }
+}
+
+/* Styling for cursor buttons */
+.cursor-group {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+    gap: 8px;
+    margin-bottom: 15px;
+}
+
+.cursor-btn {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 8px;
+    cursor: pointer;
+    text-align: center;
+    font-size: 13px;
+    transition: all 0.2s ease-in-out;
+    position: relative;
+    overflow: hidden;
+}
+
+.cursor-btn:hover {
+    background-color: rgba(var(--primary-color-rgb, 52, 152, 219), 0.1);
+    border-color: var(--primary-color);
+    transform: translateY(-3px) scale(1.03);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.cursor-btn.active {
+    background-color: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+    transform: translateY(0) scale(1);
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+}
+
+</style>
+<script type="text/javascript">
+
+"use strict";
+
+var starting = true;
+
+var canvas, graphics;
+var OSC, OSG; // off-screen canvas and graphics
+
+var items = [];
+var itemCount = 0;
+var dragItem = null;
+
+var translation1 = 150, translation2 = 150, rowOffset = 0;
+
+var groupNum = 11;
+
+var currentColor = "#000000";
+var currentTool = 5;
+var currentLineWidth = 3;
+var currentLineCap = "round";
+var currentCursor = 'crosshair'; // Initial cursor type
+
+var clearedItems = null;
+
+var FREEHAND_TOOL = 5;
+var LINE_TOOL = 0; // Added for clarity
+var RECT_TOOL = 1;
+var OVAL_TOOL = 2;
+var FILLED_RECT_TOOL = 3;
+var FILLED_OVAL_TOOL = 4;
+
+// Path to custom cursor image (assuming it's in the same folder)
+var pencilCursorPath = 'pencil.png'; 
+
+// Animation state
+var animationActive = false;
+var isDrawing = false;
+var pendingDrawCall = null;
+
+// Color palette
+var colorPalette = [
+    "#000000", "#FFFFFF", "#FF0000", "#00FF00", "#0000FF", 
+    "#FFFF00", "#FF00FF", "#00FFFF", "#FF9900", "#9900FF",
+    "#00FF99", "#990000", "#009900", "#000099", "#994C00"
+];
+
+// Track which tool button is active
+function updateActiveButtons() {
+    // Update tool buttons
+    document.querySelectorAll('.tool-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (parseInt(btn.dataset.tool) === currentTool) {
+            btn.classList.add('active');
+        }
+    });
+    
+    // Update symmetry buttons
+    document.querySelectorAll('.symmetry-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (parseInt(btn.dataset.group) === groupNum) {
+            btn.classList.add('active');
+        }
+    });
+    
+    // Update linewidth buttons
+    document.querySelectorAll('.linewidth-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (parseInt(btn.dataset.width) === currentLineWidth) {
+            btn.classList.add('active');
+        }
+    });
+    
+    // Update color swatches
+    document.querySelectorAll('.color-swatch').forEach(swatch => {
+        swatch.classList.remove('active');
+        if (swatch.dataset.color === currentColor) {
+            swatch.classList.add('active');
+        }
+    });
+
+    // Update cursor buttons
+    document.querySelectorAll('.cursor-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.dataset.cursor === currentCursor) {
+            btn.classList.add('active');
+        }
+    });
+}
+
+// Show loading overlay
+function showLoading() {
+    document.querySelector('.loading-overlay').classList.add('active');
+}
+
+// Hide loading overlay
+function hideLoading() {
+    document.querySelector('.loading-overlay').classList.remove('active');
+}
+
+// Toggle dark mode
+function toggleDarkMode() {
+    document.body.classList.toggle('dark-mode');
+    const isDarkMode = document.body.classList.contains('dark-mode');
+    
+    // Update icon
+    const themeIcon = document.querySelector('.theme-toggle i');
+    if (isDarkMode) {
+        themeIcon.className = 'fas fa-sun';
+    } else {
+        themeIcon.className = 'fas fa-moon';
+    }
+    
+    // Store preference
+    localStorage.setItem('darkMode', isDarkMode);
+    
+    // Redraw canvas with new theme colors
+    drawAll();
+}
+
+// Toggle fullscreen
+function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+            console.log(`Error attempting to enable full-screen mode: ${err.message}`);
+        });
+    } else {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        }
+    }
+}
+
+function checkInputs() { 
+    let newT1, newT2, newRO;
+    newT1 = Number(document.getElementById("translation1").value.trim());
+    if (isNaN(newT1) || newT1 < 30 || newT1 > 400) {
+        showError("Translation must be a number, 30 to 400. Change not applied!");
+        return false;
+    }
+    if (groupNum == 1 || groupNum == 5) {
+        newRO = Number(document.getElementById("offset").value.trim());
+        if (isNaN(newRO)) {
+            showError("Row Offset must be a number. Change not applied!");
+            return false;
+        }
+        newRO = newRO % newT1;
+        if (newRO < 0)
+           newRO += newT1;
+        if (newRO > newT1/2)
+           newRO -= newT1;
+    }
+    if (groupNum < 10) {
+        newT2 = Number(document.getElementById("translation2").value.trim());
+        if (isNaN(newT2) || newT2 < 30 || newT2 > 400) {
+            showError("2nd Translation must be a number, 30 to 400. Change not applied!");
+            return false;
+        }
+    }
+    
+    // Animate the transition between values
+    animateTranslationChange(translation1, newT1, translation2, newT2, rowOffset, newRO);
+    
+    return true;
+}
+
+// Show error with animation
+function showError(message) {
+    const errorElement = document.getElementById("error");
+    errorElement.innerHTML = message;
+    errorElement.style.opacity = "0";
+    
+    // Force reflow
+    void errorElement.offsetWidth;
+    
+    errorElement.style.opacity = "1";
+    
+    // Clear after 4 seconds
+    setTimeout(() => {
+        errorElement.style.opacity = "0";
+        setTimeout(() => {
+            errorElement.innerHTML = "&nbsp;";
+        }, 300);
+    }, 4000);
+}
+
+// Animate translation changes
+function animateTranslationChange(oldT1, newT1, oldT2, newT2, oldRO, newRO) {
+    showLoading();
+    
+    // Store old values
+    const originalT1 = translation1;
+    const originalT2 = translation2;
+    const originalRO = rowOffset;
+    
+    // Set final values immediately for calculations
+    translation1 = newT1;
+    translation2 = newT2;
+    rowOffset = newRO;
+    
+    // Redraw with new values
+    setTimeout(() => {
+        drawAll();
+        hideLoading();
+    }, 300);
+}
+
+function drawAll() { 
+    if (animationActive) return;
+    
+    OSG.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-bg');
+    OSG.fillRect(0,0,canvas.width,canvas.height);
+    for (var i = 0; i < itemCount; i++) {
+        drawItem(OSG,items[i]);
+    }
+    graphics.drawImage(OSC,0,0);
+    if (document.getElementById("showGridCB").checked) {
+        drawGrid(graphics);
+    }
+}
+
+function draw() {
+    if (pendingDrawCall) {
+        cancelAnimationFrame(pendingDrawCall);
+    }
+    
+    pendingDrawCall = requestAnimationFrame(() => {
+        graphics.drawImage(OSC,0,0);
+        if (dragItem != null) { 
+            drawItem(graphics,dragItem);
+        }
+        if (document.getElementById("showGridCB").checked) {
+            drawGrid(graphics);
+        }
+        pendingDrawCall = null;
+    });
+}
+
+function drawItemToOSC(item) {
+    drawItem(OSG,item);
+    graphics.drawImage(OSC,0,0);
+    if (document.getElementById("showGridCB").checked) {
+        drawGrid(graphics);
+    }
+}
+
+function drawItem(graphics,item) {  
+    if (item.type == FREEHAND_TOOL) {
+        for (var i = 0; i < item.lines.length; i++) {
+            drawItem(graphics,item.lines[i]);
+        }
+        return;
+    }
+    if (item.type > 2) {
+        graphics.fillStyle = item.color;
+    }
+    else {
+        graphics.strokeStyle = item.color;
+        graphics.lineWidth = item.lineWidth;
+        graphics.lineCap = item.lineCap;
+    }
+    var transY;
+    var hOffset;
+    if (groupNum == 1 || groupNum == 5) {
+        transY = translation2;
+        hOffset = rowOffset/transY; // horizontal offset per vertical pixel
+    }
+    else if (groupNum < 10) {
+        transY = translation2;
+        hOffset = 0;
+    }
+    else {
+        transY = translation1;
+        hOffset = 0;
+    }
+    var a,b,i;
+    switch (groupNum) {
+        case 1:
+            drawBasicItem(graphics,item.type,item.x1,item.x2,item.y1,item.y2);  // Untransformed item
+            break;
+        case 2: // pg
+            drawBasicItem(graphics,item.type,item.x1,item.x2,item.y1,item.y2);  // Untransformed item
+            drawBasicItem(graphics,item.type,item.x1+translation1/2,item.x2+translation1/2,-item.y1,-item.y2);  // horizontal glide reflection
+            break;
+        case 3: // pm
+            drawBasicItem(graphics,item.type,item.x1,item.x2,item.y1,item.y2);  // Untransformed item
+            drawBasicItem(graphics,item.type,-item.x1,-item.x2,item.y1,item.y2);  // horizontal reflextion
+            break;
+        case 4: //cm
+            a = translation1/2;
+            drawBasicItem(graphics,item.type,item.x1,item.x2,item.y1,item.y2);  // Untransformed item
+            drawBasicItem(graphics,item.type,-item.x1,-item.x2,item.y1+transY/2,item.y2+transY/2); // vertical glide reflection
+            drawBasicItem(graphics,item.type,a+item.x1,a+item.x2,item.y1+transY/2,item.y2+transY/2);
+            drawBasicItem(graphics,item.type,a-item.x1,a-item.x2,item.y1,item.y2); 
+            break;
+        case 5: //p2
+            drawBasicItem(graphics,item.type,item.x1,item.x2,item.y1,item.y2);  // Untransformed item
+            drawBasicItem(graphics,item.type,-item.x1,-item.x2,-item.y1,-item.y2); // 180 rotation
+            break;
+        case 6: // pgg
+            drawBasicItem(graphics,item.type,item.x1,item.x2,item.y1,item.y2);  // Untransformed item
+            drawBasicItem(graphics,item.type,item.x1+translation1/2,item.x2+translation1/2,-item.y1,-item.y2);  // horizontal glide reflection
+            drawBasicItem(graphics,item.type,-item.x1,-item.x2,item.y1+transY/2,item.y2+transY/2); // vertical glide reflection
+            drawBasicItem(graphics,item.type,-item.x1+translation1/2,-item.x2+translation1/2,-(item.y1+transY/2),-(item.y2+transY/2)); // double glide reflection
+            break;
+        case 7: // pmm
+            drawBasicItem(graphics,item.type,item.x1,item.x2,item.y1,item.y2);  // Untransformed item
+            drawBasicItem(graphics,item.type,-item.x1,-item.x2,-item.y1,-item.y2); // 180 rotation
+            drawBasicItem(graphics,item.type,-item.x1,-item.x2,item.y1,item.y2);  // horizontal reflextion
+            drawBasicItem(graphics,item.type,item.x1,item.x2,-item.y1,-item.y2);  // vertical reflection
+            break;
+        case 8: // cmm
+            drawBasicItem(graphics,item.type,item.x1,item.x2,item.y1,item.y2);  // Untransformed item
+            drawBasicItem(graphics,item.type,-item.x1,-item.x2,item.y1,item.y2);
+            drawBasicItem(graphics,item.type,item.x1,item.x2,-item.y1,-item.y2);
+            drawBasicItem(graphics,item.type,-item.x1,-item.x2,-item.y1,-item.y2);
+            a = translation1/2;
+            b = transY/2;
+            drawBasicItem(graphics,item.type,item.x1+a,item.x2+a,item.y1+b,item.y2+b);
+            drawBasicItem(graphics,item.type,-item.x1+a,-item.x2+a,item.y1+b,item.y2+b);
+            drawBasicItem(graphics,item.type,item.x1+a,item.x2+a,-item.y1+b,-item.y2+b);
+            drawBasicItem(graphics,item.type,-item.x1+a,-item.x2+a,-item.y1+b,-item.y2+b);
+            break;
+        case 9: // pmg
+            drawBasicItem(graphics,item.type,item.x1,item.x2,item.y1,item.y2);  // Untransformed item
+            drawBasicItem(graphics,item.type,-item.x1,-item.x2,-item.y1,-item.y2); // 180 rotation
+            drawBasicItem(graphics,item.type,item.x1+translation1/2,item.x2+translation1/2,-item.y1,-item.y2);  // horizontal glide reflection
+            drawBasicItem(graphics,item.type,-(item.x1+translation1/2),-(item.x2+translation1/2),item.y1,item.y2);  // horizontal glide reflection
+            break;
+        case 10: // p4
+            drawBasicItem(graphics,item.type,item.x1,item.x2,item.y1,item.y2);  // Untransformed item
+            drawBasicItem(graphics,item.type,-item.x1,-item.x2,-item.y1,-item.y2); // 180 rotation
+            drawBasicItem(graphics,item.type,item.y1,item.y2,-item.x1,-item.x2); // -90 rot.
+            drawBasicItem(graphics,item.type,-item.y1,-item.y2,item.x1,item.x2); // 90 rot.
+            break;
+        case 11: // p4m
+            drawBasicItem(graphics,item.type,item.x1,item.x2,item.y1,item.y2);  // Untransformed item
+            drawBasicItem(graphics,item.type,-item.x1,-item.x2,-item.y1,-item.y2); // 180 rotation
+            drawBasicItem(graphics,item.type,item.y1,item.y2,-item.x1,-item.x2); // -90 rot.
+            drawBasicItem(graphics,item.type,-item.y1,-item.y2,item.x1,item.x2); // 90 rot.
+            
+            drawBasicItem(graphics,item.type,item.x1,item.x2,-item.y1,-item.y2);  // Untransformed item
+            drawBasicItem(graphics,item.type,-item.x1,-item.x2,item.y1,item.y2); // 180 rotation
+            drawBasicItem(graphics,item.type,-item.y1,-item.y2,-item.x1,-item.x2); // -90 rot.
+            drawBasicItem(graphics,item.type,item.y1,item.y2,item.x1,item.x2); // 90 rot.
+            
+            break;
+        case 12: // p4g
+            drawBasicItem(graphics,item.type,item.x1,item.x2,item.y1,item.y2);  // Untransformed item
+            drawBasicItem(graphics,item.type,-item.x1,-item.x2,-item.y1,-item.y2); // 180 rotation
+            drawBasicItem(graphics,item.type,item.y1,item.y2,-item.x1,-item.x2); // -90 rot.
+            drawBasicItem(graphics,item.type,-item.y1,-item.y2,item.x1,item.x2); // 90 rot.
+            
+            drawBasicItem(graphics,item.type,translation1/2-item.x1,translation1/2-item.x2,translation1/2-item.y1,translation1/2-item.y2);  
+            drawBasicItem(graphics,item.type,translation1/2+item.x1,translation1/2+item.x2,translation1/2+item.y1,translation1/2+item.y2); 
+            drawBasicItem(graphics,item.type,translation1/2-item.y1,translation1/2-item.y2,translation1/2+item.x1,translation1/2+item.x2); 
+            drawBasicItem(graphics,item.type,translation1/2+item.y1,translation1/2+item.y2,translation1/2-item.x1,translation1/2-item.x2); 
+            
+            drawBasicItem(graphics,item.type,translation1/2-item.x1,translation1/2-item.x2,item.y1,item.y2);  
+            drawBasicItem(graphics,item.type,translation1/2+item.x1,translation1/2+item.x2,-item.y1,-item.y2); 
+            drawBasicItem(graphics,item.type,translation1/2-item.y1,translation1/2-item.y2,-item.x1,-item.x2); 
+            drawBasicItem(graphics,item.type,translation1/2+item.y1,translation1/2+item.y2,item.x1,item.x2); 
+            
+            drawBasicItem(graphics,item.type,item.x1,item.x2,translation1/2-item.y1,translation1/2-item.y2);  
+            drawBasicItem(graphics,item.type,-item.x1,-item.x2,translation1/2+item.y1,translation1/2+item.y2); 
+            drawBasicItem(graphics,item.type,item.y1,item.y2,translation1/2+item.x1,translation1/2+item.x2); 
+            drawBasicItem(graphics,item.type,-item.y1,-item.y2,translation1/2-item.x1,translation1/2-item.x2); 
+            
+            break;
+        case 13: // p3
+            drawBasicItemHex(graphics,item.type,item.x1,item.x2,item.y1,item.y2,0);
+            drawBasicItemHex(graphics,item.type,item.x1,item.x2,item.y1,item.y2,2*Math.PI/3);
+            drawBasicItemHex(graphics,item.type,item.x1,item.x2,item.y1,item.y2,-2*Math.PI/3);
+            break;
+        case 14: // p3m1
+            drawBasicItemHex(graphics,item.type,item.x1,item.x2,item.y1,item.y2,0);
+            drawBasicItemHex(graphics,item.type,item.x1,item.x2,item.y1,item.y2,2*Math.PI/3);
+            drawBasicItemHex(graphics,item.type,item.x1,item.x2,item.y1,item.y2,-2*Math.PI/3);
+            drawBasicItemHex(graphics,item.type,-item.x1,-item.x2,item.y1,item.y2,0);
+            drawBasicItemHex(graphics,item.type,-item.x1,-item.x2,item.y1,item.y2,2*Math.PI/3);
+            drawBasicItemHex(graphics,item.type,-item.x1,-item.x2,item.y1,item.y2,-2*Math.PI/3);
+            break;
+        case 15: // p31m
+            drawBasicItemHex(graphics,item.type,item.x1,item.x2,item.y1,item.y2,0);
+            drawBasicItemHex(graphics,item.type,item.x1,item.x2,item.y1,item.y2,2*Math.PI/3);
+            drawBasicItemHex(graphics,item.type,item.x1,item.x2,item.y1,item.y2,-2*Math.PI/3);
+            drawBasicItemHex(graphics,item.type,item.x1,item.x2,-item.y1,-item.y2,0);
+            drawBasicItemHex(graphics,item.type,item.x1,item.x2,-item.y1,-item.y2,2*Math.PI/3);
+            drawBasicItemHex(graphics,item.type,item.x1,item.x2,-item.y1,-item.y2,-2*Math.PI/3);
+            break;
+        case 16: // p6
+            for (i = 0; i < 6; i++) {
+                drawBasicItemHex(graphics,item.type,item.x1,item.x2,item.y1,item.y2,i*Math.PI/3);
+            }
+            break;
+        case 17: // p6m
+            for (i = 0; i < 6; i++) {
+                drawBasicItemHex(graphics,item.type,item.x1,item.x2,item.y1,item.y2,i*Math.PI/3);
+                drawBasicItemHex(graphics,item.type,-item.x1,-item.x2,item.y1,item.y2,i*Math.PI/3);
+            }
+            break;
+    }
+    function drawBasicItem(graphics,type,x1,x2,y1,y2) {
+        var minX = Math.min(x1,x2) - 10;
+        var maxX = Math.max(x1,x2) + 10;
+        var minY = Math.min(y1,y2) - 10;
+        var maxY = Math.max(y1,y2) + 10;
+        var startY = -transY * Math.floor(maxY/transY);
+        var startX = -translation1 * Math.floor( maxX/translation1 );
+        var ty = startY;
+        while (ty+minY < canvas.height) {
+            graphics.save();
+            graphics.translate(0,ty);
+            var tx = startX;
+            if (hOffset != 0) {
+                tx += hOffset * ty;
+                while (tx+maxX < 0)
+                    tx += translation1;
+                while (tx+maxX > translation1)
+                    tx -= translation1;
+            }
+            while (tx+minX < canvas.width) {
+                graphics.save();
+                graphics.translate(tx,0);
+                if (type == 0)
+                    graphics.strokeLine(x1, y1, x2, y2);
+                else if (type == 1)
+                    graphics.strokeRectFromCorners(x1, y1, x2, y2);
+                else if (type == 2)
+                    graphics.strokeOval(x1, y1, x2, y2);
+                else if (type == 3)
+                    graphics.fillRectFromCorners(x1, y1, x2, y2);
+                else 
+                    graphics.fillOval(x1, y1, x2, y2);
+                graphics.restore();
+                tx += translation1;
+            }
+            graphics.restore();
+            ty += transY;
+        }
+    }
+    function drawBasicItemHex(graphics,type,x1,x2,y1,y2,theta) {
+        var s = Math.sin(theta);
+        var c = Math.cos(theta);
+        var xc = (x1+x2)/2;
+        var yc = (y1+y2)/2;
+        var radius = Math.sqrt( (x1-x2)*(x1-x2) + (y1-y2)*(y1-y2) ) / 2;
+        
+        var temp = c*xc-s*yc; // do rotation of center
+        yc = s*xc+c*yc;
+        xc = temp;
+
+        var minX = xc - radius - 10;
+        var maxX = xc + radius + 10;
+        var minY = yc - radius - 10;
+        var maxY = yc + radius + 10;
+        var trans = translation1;
+        var transH = trans * 2/ Math.sqrt(3);
+        var startY = -trans * Math.floor(maxY/trans);
+        var startX = -transH * Math.floor(maxX/transH);
+        var ty = startY;
+        var hOffset = -Math.sqrt(3);
+        while (ty+minY < canvas.height) {
+            graphics.save();
+            graphics.translate(0,ty);
+            var tx = startX;
+            tx -= hOffset * ty;
+            while (tx+maxX < 0)
+                tx += transH;
+            while (tx+maxX > transH)
+                tx -= transH;
+            while (tx+minX < canvas.width) {
+                graphics.save();
+                graphics.translate(tx,0);
+                graphics.rotate(theta);
+                if (type == 0)
+                    graphics.strokeLine(x1, y1, x2, y2);
+                else if (type == 1)
+                    graphics.strokeRectFromCorners(x1, y1, x2, y2);
+                else if (type == 2)
+                    graphics.strokeOval(x1, y1, x2, y2);
+                else if (type == 3)
+                    graphics.fillRectFromCorners(x1, y1, x2, y2);
+                else 
+                    graphics.fillOval(x1, y1, x2, y2);
+                graphics.restore();
+                tx += transH;
+            }
+            graphics.restore();
+            ty += trans;
+        }
+    }
+}
+    
+function drawGrid(graphics) { 
+    graphics.save();
+    graphics.lineWidth = 1;
+    graphics.lineCap = "butt";
+    graphics.globalAlpha = 0.5;
+    
+    // Check if grid animation is enabled
+    const animateGrid = document.getElementById("animateGridCB") && 
+                        document.getElementById("animateGridCB").checked;
+    
+    // Apply animation class if needed
+    if (animateGrid) {
+        graphics.globalAlpha = 0.3 + 0.4 * Math.abs(Math.sin(Date.now() / 1000)); // Pulsing opacity
+    }
+    
+    for (var i = 0; i < 2; i++) {
+        graphics.save();
+        if (i == 1) {
+            graphics.strokeStyle = "var(--text-color)";
+            graphics.translate(0.5,0.5);
+        }
+        else {
+            graphics.strokeStyle = "var(--primary-color)";
+            graphics.translate(-0.5,-0.5);
+        }
+        var y,dy;
+        var w = canvas.width;
+        var h = canvas.height;
+        if (groupNum < 10) {
+            dy = translation2;
+        }
+        else {
+            dy = translation1;
+        }
+        y = dy;
+        while (y < h) {
+            graphics.strokeLine(0,y,w,y);
+            y += dy;
+        }
+        var x,dx;
+        if (groupNum < 13 && (rowOffset == 0 || groupNum != 1 && groupNum != 5)) {
+            x = dx = translation1;
+            while (x < w) {
+                graphics.strokeLine(x,0,x,h);
+                x += dx;
+            }
+        }
+        else if (groupNum < 13) { // and rowOffset is not 0 and groupNum is 1 or 5
+            var rows = h / translation2;
+            var offset;
+            if (rowOffset <= translation1/2)
+                offset = rows*rowOffset;
+            else
+                offset = rows*(rowOffset - translation1);
+            dx = translation1;
+            if (offset > 0) {
+                x = 0;
+                while (x + offset > dx)
+                    x -= dx;
+                while (x < w) {
+                    graphics.strokeLine(x,0,x+offset,h);
+                    x += dx;
+                }
+            }
+            else {
+                x = dx;
+                while (x + offset < w) {
+                    graphics.strokeLine(x,0,x+offset,h);
+                    x += dx;
+                }
+            }
+        }
+        else {
+            var offset = h/Math.sqrt(3);
+            dx = translation1*2/Math.sqrt(3);
+            x = 0;
+            while (x + offset > dx)
+                x -= dx;
+            while (x < w) {
+                graphics.strokeLine(x,0,x+offset,h);
+                x += dx;
+            }
+            offset = -offset;
+            x = dx;
+            while (x + offset < w) {
+                graphics.strokeLine(x,0,x+offset,h);
+                x += dx;
+            }
+        }
+        graphics.restore();
+    }
+    graphics.restore();
+}
+
+function doApply() {
+    if (checkInputs()) {
+        drawAll();
+    }
+}
+
+function checkForReturnKey(evt) {
+    if (evt.keyCode == 13)
+       doApply();
+}
+
+function undo() {
+    if (clearedItems != null) {
+        showLoading();
+        setTimeout(() => {
+            items = clearedItems;
+            itemCount = items.length;
+            drawAll();
+            document.getElementById("undo").disabled = false;
+            document.getElementById("redo").disabled = true;
+            clearedItems = null;
+            hideLoading();
+            updateButtonStates();
+        }, 100);
+    }
+    else if (itemCount > 0) {
+        itemCount--;
+        drawAll();
+        if (itemCount == 0)
+            document.getElementById("undo").disabled = true;
+        document.getElementById("redo").disabled = false;
+        updateButtonStates();
+    }
+}
+
+function redo() {
+    if (itemCount < items.length) {
+        itemCount++;
+        drawAll();
+        if (itemCount == items.length)
+            document.getElementById("redo").disabled = true;
+        updateButtonStates();
+    }
+}
+
+function updateButtonStates() {
+    document.getElementById("clear").disabled = itemCount === 0;
+    document.getElementById("savebtn").disabled = itemCount === 0;
+    document.getElementById("undo").disabled = itemCount === 0 && clearedItems === null;
+}
+
+function clearDrawing() {
+    if (items.length == 0)
+        return;
+        
+    showLoading();
+    
+    setTimeout(() => {
+        if (itemCount > 0) {
+            if (items.length > itemCount)
+                items.splice(itemCount,items.length-itemCount);
+            clearedItems = items;
+        }
+        else {
+            clearedItems = null;
+        }
+        items = [];
+        itemCount = 0;
+        drawAll();
+        updateButtonStates();
+        hideLoading();
+    }, 100);
+}
+
+function selectLineWidth(lineWidth) {
+    currentLineWidth = Number(lineWidth);
+    if (currentTool == FREEHAND_TOOL || currentLineWidth >= 3) {
+        currentLineCap = "round";
+    }
+    else {
+        currentLineCap = "butt";
+    }
+    updateActiveButtons();
+}
+
+function selectTool(tool) {
+    currentTool = Number(tool);
+    if (currentTool == FREEHAND_TOOL || currentLineWidth >= 3) {
+        currentLineCap = "round";
+    }
+    else {
+        currentLineCap = "butt";
+    }
+    
+    // Set default cursor for the tool, but don't override if user selected one explicitly
+    // The actual setting happens in selectCursor, called from updateActiveButtons or init
+    if (currentTool === FREEHAND_TOOL) {
+        // Suggest pencil for freehand, but let selectCursor handle the final style
+    } else if (currentTool === LINE_TOOL || currentTool === RECT_TOOL || currentTool === OVAL_TOOL || currentTool === FILLED_RECT_TOOL || currentTool === FILLED_OVAL_TOOL) {
+        // Suggest crosshair for shapes
+    } else {
+       // Suggest default for others
+    }
+    
+    updateActiveButtons(); // This will highlight the tool and potentially the cursor
+    // No direct cursor setting here anymore, handled by selectCursor
+}
+
+// Function to explicitly select cursor style
+function selectCursor(cursorType) {
+    currentCursor = cursorType;
+    canvas.classList.remove('cursor-default', 'cursor-pencil', 'cursor-crosshair');
+    canvas.style.cursor = ''; // Clear inline style first
+
+    if (currentCursor === 'pencil') {
+        canvas.style.cursor = `url('${pencilCursorPath}') 0 32, auto`;
+        canvas.classList.add('cursor-pencil');
+    } else if (currentCursor === 'crosshair') {
+        canvas.style.cursor = 'crosshair';
+        canvas.classList.add('cursor-crosshair');
+    } else { // Default case
+        canvas.style.cursor = 'default';
+        canvas.classList.add('cursor-default');
+    }
+    updateActiveButtons(); // Update button highlighting
+}
+
+function selectGroup(num) {
+    num = Number(num);
+    if (num == groupNum)
+        return;
+        
+    showLoading();
+    
+    setTimeout(() => {
+        document.getElementById("translation1").value = "" + translation1; // (make sure inputs match current values)
+        groupNum = num;
+        if (num == 1 || num == 5) {
+            document.getElementById("offsetholder").style.display = "inline-flex";
+            document.getElementById("offset").value = "" + rowOffset;
+        }
+        else {
+            document.getElementById("offsetholder").style.display = "none";
+        }
+        if (num < 10) {
+            document.getElementById("trans2holder").style.display = "inline-flex";
+            document.getElementById("translation2").value = "" + translation2;
+        }
+        else {
+            document.getElementById("trans2holder").style.display = "none";
+        }
+        drawAll();
+        updateActiveButtons();
+        hideLoading();
+    }, 100);
+}
+
+function selectColor(color) {
+    currentColor = color;
+    document.getElementById("colorPicker").value = color;
+    updateActiveButtons();
+}
+
+function installMouser(theCanvas) {
+    function convertX(clientX) { 
+        const rect = theCanvas.getBoundingClientRect();
+        const scaleX = theCanvas.width / rect.width;
+        return Math.round((clientX - rect.left) * scaleX);
+    }
+    function convertY(clientY) {
+        const rect = theCanvas.getBoundingClientRect();
+        const scaleY = theCanvas.height / rect.height;
+        return Math.round((clientY - rect.top) * scaleY);
+    }
+    function doMouseDrag(evt){
+        if (dragItem == null)
+           return;
+        
+        isDrawing = true;
+        
+        dragItem.x2 = convertX(evt.clientX);
+        dragItem.y2 = convertY(evt.clientY);
+        if (currentTool == FREEHAND_TOOL) {
+            var segment = {};
+            segment.type = 0;
+            segment.color = currentColor;
+            segment.lineWidth = currentLineWidth;
+            segment.lineCap = currentLineCap;
+            segment.x1 = dragItem.x1;
+            segment.x2 = dragItem.x2;
+            segment.y1 = dragItem.y1;
+            segment.y2 = dragItem.y2;
+            dragItem.lines.push(segment);
+            drawItemToOSC(segment);
+            dragItem.x1 = segment.x2;
+            dragItem.y1 = segment.y2;
+        }
+        else {
+            draw();
+        }
+        evt.preventDefault();
+    }
+    function doMouseUp(evt){
+        isDrawing = false;
+        
+        if (dragItem == null)
+            return;
+        theCanvas.removeEventListener("mousemove", doMouseDrag);
+        document.removeEventListener("mouseup", doMouseUp);
+        if ( (currentTool == FREEHAND_TOOL && dragItem.lines.length > 0)
+                    || (currentTool == 0 && (dragItem.x1 != dragItem.x2 || dragItem.y1 != dragItem.y2))
+                    || (currentTool > 0 && currentTool < FREEHAND_TOOL && dragItem.x1 != dragItem.x2 && dragItem.y1 != dragItem.y2)) {
+            if (itemCount < items.length)
+                items.splice(itemCount,items.length-itemCount);
+            
+            // Add fade-in class for animation
+            dragItem.fadeIn = true;
+            
+            items.push(dragItem);
+            itemCount = items.length;
+            document.getElementById("undo").disabled = false;
+            document.getElementById("redo").disabled = true;
+            document.getElementById("clear").disabled = false;
+            document.getElementById("savebtn").disabled = false;
+            clearedItems = null;
+            if (currentTool != FREEHAND_TOOL) {
+               drawItemToOSC(dragItem);
+            }
+        }
+        dragItem = null;
+        evt.preventDefault();
+    }
+    function doMouseDown(evt){
+        if (starting) {
+            drawAll();
+            starting = false;
+        }
+        if (dragItem != null || evt.button > 0)
+           return;
+        document.getElementById("error").innerHTML = "&nbsp;";
+        theCanvas.addEventListener("mousemove", doMouseDrag);
+        document.addEventListener("mouseup", doMouseUp);
+        dragItem = {};
+        dragItem.type = currentTool;
+        dragItem.color = currentColor;
+        dragItem.lineWidth = currentLineWidth;
+        dragItem.lineCap = currentLineCap;
+        dragItem.x1 = dragItem.x2 = convertX(evt.clientX);
+        dragItem.y1 = dragItem.y2 = convertY(evt.clientY);
+        if (currentTool == FREEHAND_TOOL) {
+            dragItem.lines = [];
+        }
+        evt.preventDefault();
+    }
+    theCanvas.addEventListener("mousedown", doMouseDown);
+}
+
+function installTouchHandler(theCanvas) {
+    function convertX(clientX) {
+        const rect = theCanvas.getBoundingClientRect();
+        const scaleX = theCanvas.width / rect.width;
+        return Math.round((clientX - rect.left) * scaleX);
+    }
+    function convertY(clientY) {
+        const rect = theCanvas.getBoundingClientRect();
+        const scaleY = theCanvas.height / rect.height;
+        return Math.round((clientY - rect.top) * scaleY);
+    }
+    function doTouchMove(evt){
+        if (dragItem == null)
+           return;
+        if (evt.touches.length != 1) {
+           doTouchEnd(evt);
+           return;
+        }
+        
+        isDrawing = true;
+        
+        dragItem.x2 = convertX(evt.touches[0].clientX);
+        dragItem.y2 = convertY(evt.touches[0].clientY);
+        if (currentTool == FREEHAND_TOOL) {
+            var segment = {};
+            segment.type = 0;
+            segment.color = currentColor;
+            segment.lineWidth = currentLineWidth;
+            segment.lineCap = currentLineCap;
+            segment.x1 = dragItem.x1;
+            segment.x2 = dragItem.x2;
+            segment.y1 = dragItem.y1;
+            segment.y2 = dragItem.y2;
+            dragItem.lines.push(segment);
+            drawItemToOSC(segment);
+            dragItem.x1 = segment.x2;
+            dragItem.y1 = segment.y2;
+        }
+        else {
+            draw();
+        }
+        evt.preventDefault();
+    }
+    function doTouchEnd(evt){
+        isDrawing = false;
+        
+        if (dragItem == null)
+            return;
+        theCanvas.removeEventListener("touchmove",doTouchMove);
+        theCanvas.removeEventListener("touchend",doTouchEnd);
+        theCanvas.removeEventListener("touchcancel",doTouchCancel);
+        if ( (currentTool == FREEHAND_TOOL && dragItem.lines.length > 0)
+                    ||(currentTool == 0 && (dragItem.x1 != dragItem.x2 || dragItem.y1 != dragItem.y2))
+                    || (currentTool > 0 && currentTool < FREEHAND_TOOL && dragItem.x1 != dragItem.x2 && dragItem.y1 != dragItem.y2)) {
+            if (itemCount < items.length)
+                items.splice(itemCount,items.length-itemCount);
+                
+            // Add fade-in class for animation
+            dragItem.fadeIn = true;
+            
+            items.push(dragItem);
+            itemCount = items.length;
+            document.getElementById("undo").disabled = false;
+            document.getElementById("redo").disabled = true;
+            document.getElementById("clear").disabled = false;
+            document.getElementById("savebtn").disabled = false;
+            clearedItems = null;
+            if (currentTool != FREEHAND_TOOL) {
+               drawItemToOSC(dragItem);
+            }
+        }
+        dragItem = null;
+        evt.preventDefault();
+    }
+    function doTouchStart(evt){
+        if (starting) {
+            drawAll();
+            starting = false;
+        }
+        if (evt.touches.length != 1) {
+           doTouchEnd(evt);
+           return;
+        }
+        evt.preventDefault();
+        if (dragItem != null) {
+            doTouchEnd();
+        }
+        document.getElementById("error").innerHTML = "&nbsp;";
+        theCanvas.addEventListener("touchmove",doTouchMove);
+        theCanvas.addEventListener("touchend",doTouchEnd);
+        theCanvas.addEventListener("touchcancel",doTouchCancel);
+        dragItem = {};
+        dragItem.type = currentTool;
+        dragItem.color = currentColor;
+        dragItem.lineWidth = currentLineWidth;
+        dragItem.lineCap = currentLineCap;
+        dragItem.x1 = dragItem.x2 = convertX(evt.touches[0].clientX);
+        dragItem.y1 = dragItem.y2 = convertY(evt.touches[0].clientY);
+        if (currentTool == FREEHAND_TOOL) {
+            dragItem.lines = [];
+        }
+    }
+    function doTouchCancel() {
+        isDrawing = false;
+        if (dragItem != null) {
+            dragItem = null;
+            theCanvas.removeEventListener("touchmove",doTouchMove);
+            theCanvas.removeEventListener("touchend",doTouchEnd);
+            theCanvas.removeEventListener("touchcancel",doTouchCancel);
+        }
+    }
+    theCanvas.addEventListener("touchstart", doTouchStart);
+}
+
+// Make canvas responsive
+function resizeCanvas() {
+    const container = document.querySelector('.canvas-container');
+    const containerWidth = container.clientWidth;
+    
+    // Preserve aspect ratio
+    if (containerWidth < canvas.width) {
+        const scale = containerWidth / canvas.width;
+        canvas.style.width = containerWidth + 'px';
+        canvas.style.height = (canvas.height * scale) + 'px';
+    } else {
+        canvas.style.width = canvas.width + 'px';
+        canvas.style.height = canvas.height + 'px';
+    }
+}
+
+function addExtraFunctionsToGraphics(graphics) {
+    graphics.strokeLine = function(x1,y1,x2,y2) {
+       graphics.beginPath();
+       graphics.moveTo(x1,y1);
+       graphics.lineTo(x2,y2);
+       graphics.stroke();
+    }
+   graphics.fillOval = function(x1,y1,x2,y2) {
+       var x,y,horizontalRadius,verticalRadius;
+       x = Math.min(x1,x2);
+       y = Math.min(y1,y2);
+       horizontalRadius = (Math.max(x1,x2) - x) / 2;
+       verticalRadius = (Math.max(y1,y2) - y) / 2;
+       x += horizontalRadius;
+       y += verticalRadius;
+       graphics.save();
+       graphics.translate(x,y);
+       graphics.scale(horizontalRadius,verticalRadius);
+       graphics.beginPath();
+       graphics.arc(0,0,1,0,2*Math.PI,false);
+       graphics.restore();
+       graphics.fill();
+    }
+    graphics.strokeOval = function(x1,y1,x2,y2) {
+       var x,y,horizontalRadius,verticalRadius;
+       x = Math.min(x1,x2);
+       y = Math.min(y1,y2);
+       horizontalRadius = (Math.max(x1,x2) - x) / 2;
+       verticalRadius = (Math.max(y1,y2) - y) / 2;
+       x += horizontalRadius;
+       y += verticalRadius;
+       graphics.save();
+       graphics.translate(x,y);
+       graphics.scale(horizontalRadius,verticalRadius);
+       graphics.beginPath();
+       graphics.arc(0,0,1,0,2*Math.PI,false);
+       graphics.restore();
+       graphics.stroke();
+    }
+    graphics.fillRectFromCorners = function(x1,y1,x2,y2) {
+       var x,y,width,height;
+       x = Math.min(x1,x2);
+       y = Math.min(y1,y2);
+       width = Math.max(x1,x2) - x;
+       height = Math.max(y1,y2) - y;
+       graphics.fillRect(x,y,width,height);
+    }
+    graphics.strokeRectFromCorners = function(x1,y1,x2,y2) {
+       var x,y,width,height;
+       x = Math.min(x1,x2);
+       y = Math.min(y1,y2);
+       width = Math.max(x1,x2) - x;
+       height = Math.max(y1,y2) - y;
+       graphics.strokeRect(x,y,width,height);
+    }
+}
+
+function setUpFileHandling() {  // File handling for saving and loading files; added November 2023.
+   var saveBtn = document.getElementById("savebtn");
+   var loadBtn = document.getElementById("loadbtn");
+   var loading = false;
+   if (window.showOpenFilePicker && FileSystemFileHandle && FileSystemFileHandle.prototype.getFile) {
+        loadBtn.addEventListener("click",doLoad,false);
+    }
+    else {
+        let chooser = document.createElement("input");
+        chooser.type = "file";
+        chooser.id = "chooseloadfile";
+        chooser.style.display = "none";
+        document.querySelector('.canvas-container').appendChild(chooser);
+        loadBtn.addEventListener("click",doBasicLoad,false);
+        loadBtn.title += "  This will look like uploading a file, but it will only be loaded locally.";
+    }
+    if (window.showSaveFilePicker && FileSystemFileHandle && FileSystemFileHandle.prototype.createWritable) {
+        saveBtn.addEventListener("click",doSave,false);  
+    }
+    else {
+        saveBtn.addEventListener("click",doBasicSave,false);
+        saveBtn.title += "  This will look like downloading a file named wallpaper_symmetry.json.";
+    }
+    function doBasicSave() {
+        if (loading || itemCount === 0)
+           return;
+        let content = getCurrentData();
+        if (content === null)
+            return;
+        let name = "wallpaper_symmetry.json";
+        let blob = new Blob([content], {type: 'text/json'});
+        let link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = name;
+        link.click();
+        URL.revokeObjectURL(link.href);
+    }
+    async function doSave() {
+        if (loading || itemCount === 0)
+           return;
+        let content = getCurrentData();
+        if (content === null)
+            return;
+        let name = "wallpaper_symmetry.json";
+        let blob = new Blob([content], {type: 'text/json'});
+        let options = { suggestedName: name };
+        try {
+            let fileHandle = await window.showSaveFilePicker(options);
+            let stream = await fileHandle.createWritable();
+            await stream.write(blob);
+            await stream.close();
+            setMessage("File has been saved.");
+        }
+        catch (e) {
+            if (e.name !== "AbortError") {
+                setMessage("Error while attempting to save file:\n" + e);
+            }
+        }
+    }
+    function doBasicLoad() {
+        let chooser = document.getElementById("chooseloadfile");
+        chooser.value = "";
+        document.getElementById("chooseloadfile").addEventListener("change",handleBasicFileLoad,false);
+        chooser.click();
+    }
+    async function handleBasicFileLoad() {
+       loadBtn.disabled = true;
+       loading = true;
+       try {
+            let chooser = document.getElementById("chooseloadfile");
+            chooser.removeEventListener("change",handleBasicFileLoad,false);
+            if (chooser.files.length === 0)
+               return;
+            let text = await chooser.files[0].text();
+            newData(text);
+       }
+       catch (e) {
+           setMessage("File load failed:\n" + e);
+       }
+       finally {
+           loadBtn.disabled = false;
+           loading = false;
+       }
+    }
+    async function doLoad() {
+       loading = true;
+       loadBtn.disabled = true;
+       try {
+           let files = await window.showOpenFilePicker();
+           if (files.length === 0) {
+              return;
+           }
+           let fileData = await files[0].getFile();
+           let text = await fileData.text();
+           newData(text);
+       }
+       catch (e) {
+           if (e.name !== "AbortError") {
+              setMessage("File load failed:\n" + e);
+           }
+       }
+       finally {
+           loadBtn.disabled = false;
+           loading = false;
+       }
+    }
+    const intToGroup = [ null, "p1", "pg", "pm", "cm", "p2", "pgg", "pmm", "cmm", "pmg", "p4", "p4m", "p4g", "p3", "p3m1", "p31m", "p6", "p6m" ];
+    const groupToInt = { "p1": 1, "pg": 2, "pm": 3, "cm": 4, "p2": 5, "pgg": 6, "pmm": 7, "cmm": 8, "pmg": 9,
+                         "p4": 10, "p4m": 11, "p4g": 12, "p3": 13, "p3m1": 14, "p31m": 15, "p6": 16, "p6m": 17 };
+    const intToTool = [ "Line", "Rectangle", "Oval", "Filled Rect", "Filled Oval", "Freehand" ];
+    const toolToInt = { "Line": 0, "Rectangle": 1, "Oval": 2, "Filled Rect": 3, "Filled Oval": 4, "Freehand": 5 };
+    function getCurrentData() {
+        let data = [];
+        data.push("{");
+        data.push('  "group": "' + intToGroup[groupNum] + '",');
+        let translate1 = Number(document.getElementById("translation1").value.trim());
+        data.push('  "translate1": ' + translate1 + ',');
+        if (groupNum < 10) {
+            data.push('  "translate2": ' + translation2 + ',');
+        }
+        if (groupNum == 1 || groupNum == 5) {
+            data.push('  "rowOffset": ' + rowOffset + ',');
+        }
+        data.push('  "items": [');
+        for (let i = 0; i < itemCount; i++ ) {
+            let item = items[i];
+            // Save the hex color string directly
+            if (item.type === 3 || item.type === 4)
+                data.push(`    { "tool": "${intToTool[item.type]}", "color": "${item.color}",`);
+            else
+                data.push(`    { "tool": "${intToTool[item.type]}", "color": "${item.color}", "lineWidth": ${item.lineWidth},`);
+            if (item.type !== 5) {
+                data.push(`     "x1": ${item.x1}, "y1": ${item.y1}, "x2": ${item.x2}, "y2": ${item.y2} }` + (i === itemCount-1 ? "" : ","));
+            }
+            else {
+                data.push('      "points": [');
+                data.push("        " + item.lines[0].x1 + ", " + item.lines[0].y1 + ",");
+                for (let j = 0; j < item.lines.length; j++) {
+                    let line = item.lines[j];
+                    data.push("        " + line.x2 + ", " + line.y2 + (j === item.lines.length-1 ? "" : ","));
+                }
+                data.push('      ]');
+                data.push(i === itemCount-1 ? '    }' : '    },');
+            }
+        }
+        data.push('  ]');
+        data.push("}\n");
+        return data.join("\n");
+    }
+    function newData(text) {
+        let data;
+        try {
+            data = JSON.parse(text);
+        }
+        catch (e) {
+            console.log(e);
+            throw "File content does not have legal JSON syntax.";
+        }
+        let newGroup, newTranslate1, newTranslate2, newOffset, newItems;
+        if ( !(data.group in groupToInt) )
+            throw "File data does not specify a legal group name.";
+        newGroup = groupToInt[data.group];
+        if ( typeof data.translate1 !== "number" || data.translate1 < 30 || data.translate1 > 400 )
+            throw "File does not specify a legal translate1.";
+        newTranslate1 = data.translate1;
+        if (newGroup == 1 || newGroup == 5) {
+            if ( typeof data.rowOffset !== "number" )
+                throw "File does not specify a legal rowOffset.";
+            newOffset = data.rowOffset % newTranslate1;
+            if (newOffset < 0)
+               newOffset += newTranslate1;
+            if (newOffset > newTranslate1/2)
+                newOffset -= newTranslate1;
+        }
+        else
+            newOffset = 0;
+        if (newGroup < 10) {
+            if ( typeof data.translate2 !== "number" || data.translate2 < 30 || data.translate2 > 400)
+                throw "File does not specify a legal translate2";
+            else
+                newTranslate2 = data.translate2;
+        }
+        else
+            newTranslate2 = newTranslate1;
+        if (typeof data.items !== "object" || !data.items.length)
+            throw "File does not specify a set of items to draw.";
+        newItems = [];
+        data.items.forEach( item => {
+            let newItem = {};
+            if ( !(item.tool in toolToInt) )
+                throw "An item in the file does not specify a legal tool.";
+            newItem.type = toolToInt[item.tool];
+            // Read the hex color string directly and validate it
+            if ( typeof item.color !== "string" || !/^#[0-9A-F]{6}$/i.test(item.color) )
+                 throw "An item in the file does not specify a legal color hex code.";
+            newItem.color = item.color;
+            if (newItem.type === 3 || newItem.type === 4)
+                newItem.lineWidth = 1; // (not used for filled shapes)
+            else {
+                if ( typeof item.lineWidth !== "number" || item.lineWidth < 1 || item.lineWidth > 20)
+                    throw "An item in the file does not specify a legal lineWidth.";
+                newItem.lineWidth = item.lineWidth;
+            }
+            if (newItem.type == FREEHAND_TOOL || newItem.lineWidth >= 3) {
+                newItem.lineCap = "round";
+            }
+            else {
+                newItem.lineCap = "butt";
+            }
+            if (newItem.type !== 5) {
+                if (typeof item.x1 !== "number" || typeof item.x2 !== "number" || typeof item.y1 !== "number" || typeof item.y2 !== "number" )
+                    throw "An item in the file does not specify legal coordinates.";
+                newItem.x1 = item.x1;
+                newItem.y1 = item.y1;
+                newItem.x2 = item.x2;
+                newItem.y2 = item.y2;
+            }
+            else {
+                if (typeof item.points !== "object" || !item.points.length || item.points.length < 4)
+                    throw "A Freehand item in the file does not specify coordinates.";
+                item.points.forEach( num => {
+                    if (typeof num !== "number")
+                       throw "A Freehand item in the file has a non-numeric coordinate value.";
+                } );
+                newItem.lines = [];
+                for (let i = 0; i+3 < item.points.length-1; i += 2) {
+                    let line = { type: 0, color: newItem.color, lineWidth: newItem.lineWidth, lineCap: "round",
+                       x1: item.points[i], y1: item.points[i+1], x2: item.points[i+2], y2: item.points[i+3] };
+                    newItem.lines.push(line);
+                }
+            }
+            newItems.push(newItem);
+        });
+        groupNum = newGroup;
+        document.getElementById("g" + groupNum).checked = true;
+        translation1 = newTranslate1;
+        document.getElementById("translation1").value = "" + newTranslate1;
+        translation2 = newTranslate2;
+        document.getElementById("translation2").value = "" + newTranslate2;
+        rowOffset = newOffset;
+        document.getElementById("offset").value = "" + newOffset;
+        items = newItems;
+        itemCount = items.length;
+        document.getElementById("undo").disabled = itemCount === 0;
+        document.getElementById("clear").disabled = itemCount === 0;
+        document.getElementById("savebtn").disabled = itemCount === 0;
+        document.getElementById("redo").disabled = true;
+        document.getElementById("trans2holder").style.display = (groupNum < 10)? "inline" : "none";
+        document.getElementById("offsetholder").style.display = (groupNum === 1 || groupNum === 5)? "inline" : "none";
+        drawAll();
+    }
+    function setMessage(msg) {
+       alert(msg);
+    }
+}
+
+function init() {
+    try {
+        canvas = document.getElementById("canvas");
+        graphics = canvas.getContext("2d");
+        addExtraFunctionsToGraphics(graphics);
+        OSC = document.createElement("canvas");
+        OSC.width = canvas.width;
+        OSC.height = canvas.height;
+        OSG = OSC.getContext("2d");
+        addExtraFunctionsToGraphics(OSG);
+        OSG.fillStyle = "white";
+        OSG.fillRect(0,0,canvas.width,canvas.height);
+        
+        // Set initial cursor based on default tool or preference
+        // Let's default to crosshair initially as many tools use it
+        selectCursor(currentCursor); 
+
+    }
+    catch (e) {
+        document.getElementById("error").innerHTML =
+              "Sorry, could not create the graphics context that is required for this page.";
+        return;
+    }
+    
+    // Initialize UI
+    document.getElementById("colorPicker").value = currentColor;
+    document.getElementById("undo").disabled = true;
+    document.getElementById("redo").disabled = true;
+    document.getElementById("clear").disabled = true;
+    document.getElementById("savebtn").disabled = true;
+    document.getElementById("translation1").value = "" + translation1;
+    document.getElementById("translation2").value = "" + translation2;
+    document.getElementById("offset").value = "" + rowOffset;
+    document.getElementById("showGridCB").checked = false;
+    document.getElementById("translation1").onkeydown = checkForReturnKey;
+    document.getElementById("translation2").onkeydown = checkForReturnKey;
+    document.getElementById("offset").onkeydown = checkForReturnKey;
+    
+    // Setup color palette
+    const colorPaletteDiv = document.querySelector('.color-palette');
+    colorPalette.forEach(color => {
+        const swatch = document.createElement('div');
+        swatch.className = 'color-swatch';
+        swatch.style.backgroundColor = color;
+        swatch.dataset.color = color;
+        swatch.title = color;
+        if (color === currentColor) {
+            swatch.classList.add('active');
+        }
+        swatch.addEventListener('click', () => selectColor(color));
+        colorPaletteDiv.appendChild(swatch);
+    });
+    
+    // Add event listener for the color picker
+    document.getElementById("colorPicker").addEventListener("change", (event) => {
+        currentColor = event.target.value;
+        updateActiveButtons();
+    });
+    
+    // Check if user prefers dark mode
+    if (localStorage.getItem('darkMode') === 'true' || 
+        (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches && 
+         localStorage.getItem('darkMode') !== 'false')) {
+        document.body.classList.add('dark-mode');
+        document.querySelector('.theme-toggle i').className = 'fas fa-sun';
+    }
+    
+    // Make canvas responsive
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+    
+    // Update all button states and initial cursor
+    updateActiveButtons(); // This now updates cursor buttons too
+    selectCursor(currentCursor); // Ensure initial cursor style is applied
+    
+    installMouser(canvas);
+    installTouchHandler(canvas);
+    setUpFileHandling();
+    
+    // Draw initial state
+    drawAll();
+}
+
+// Export functions
+window.toggleDarkMode = toggleDarkMode;
+window.toggleFullscreen = toggleFullscreen;
+window.selectTool = selectTool;
+window.selectGroup = selectGroup;
+window.selectLineWidth = selectLineWidth;
+window.selectColor = selectColor;
+window.selectCursor = selectCursor; // Export the new function
+window.doApply = doApply;
+window.undo = undo;
+window.redo = redo;
+window.clearDrawing = clearDrawing;
+
+</script>
+</head>
+<body onload="init()">
+
+<noscript>
+<h2 style="color:#900">Sorry, this page requires JavaScript</h2>
+</noscript>
+
+<div class="container">
+    <header>
+        <button class="fullscreen-toggle" onclick="toggleFullscreen()" title="Toggle fullscreen">
+            <i class="fas fa-expand"></i>
+        </button>
+        <button class="theme-toggle" onclick="toggleDarkMode()" title="Toggle dark mode">
+            <i class="fas fa-moon"></i>
+        </button>
+        <h2>Wallpaper Symmetry</h2>
+        <h3>(<a href="symmetry-info.html">Click here</a> for info and instructions.)</h3>
+    </header>
+
+    <div id="error">&nbsp;</div>
+
+    <div class="settings-panel">
+        <div class="settings-row">
+            <div class="setting-group">
+                <label for="translation1">Translation:</label>
+                <input type="text" id="translation1" value="150">
+            </div>
+            <div class="setting-group" id="trans2holder">
+                <label for="translation2">2nd Translation:</label>
+                <input type="text" id="translation2" value="150">
+            </div>
+            <div class="setting-group" id="offsetholder" style="display:none">
+                <label for="offset">Row Offset:</label>
+                <input type="text" id="offset" value="0">
+            </div>
+            <button class="btn" onclick="doApply()">Apply</button>
+            <div class="setting-group" style="margin-left: auto;">
+                <label for="showGridCB">
+                    <input type="checkbox" id="showGridCB" onchange="drawAll()">
+                    Show Grid
+                </label>
+            </div>
+            <div class="setting-group">
+                <label for="animateGridCB">
+                    <input type="checkbox" id="animateGridCB" onchange="drawAll()">
+                    Animate Grid
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="sidebar">
+            <div class="section-title">Drawing Tools</div>
+            <div class="tool-group">
+                <div class="tool-btn" data-tool="0" onclick="selectTool(0)" data-tooltip="Line">
+                    <i class="fas fa-slash"></i>
+                </div>
+                <div class="tool-btn" data-tool="1" onclick="selectTool(1)" data-tooltip="Rectangle">
+                    <i class="far fa-square"></i>
+                </div>
+                <div class="tool-btn" data-tool="2" onclick="selectTool(2)" data-tooltip="Oval">
+                    <i class="far fa-circle"></i>
+                </div>
+                <div class="tool-btn" data-tool="3" onclick="selectTool(3)" data-tooltip="Filled Rectangle">
+                    <i class="fas fa-square"></i>
+                </div>
+                <div class="tool-btn" data-tool="4" onclick="selectTool(4)" data-tooltip="Filled Oval">
+                    <i class="fas fa-circle"></i>
+                </div>
+                <div class="tool-btn active" data-tool="5" onclick="selectTool(5)" data-tooltip="Freehand">
+                    <i class="fas fa-pen"></i>
+                </div>
+            </div>
+
+            <div class="section-title">Line Width</div>
+            <div class="linewidth-group">
+                <div class="linewidth-btn" data-width="1" onclick="selectLineWidth(1)" data-tooltip="Thin">
+                    <div style="height: 1px; background: currentColor; margin: 10px 0;"></div>
+                </div>
+                <div class="linewidth-btn" data-width="2" onclick="selectLineWidth(2)" data-tooltip="Medium">
+                    <div style="height: 2px; background: currentColor; margin: 9px 0;"></div>
+                </div>
+                <div class="linewidth-btn active" data-width="3" onclick="selectLineWidth(3)" data-tooltip="Thick">
+                    <div style="height: 3px; background: currentColor; margin: 8px 0;"></div>
+                </div>
+                <div class="linewidth-btn" data-width="5" onclick="selectLineWidth(5)" data-tooltip="Very Thick">
+                    <div style="height: 5px; background: currentColor; margin: 7px 0;"></div>
+                </div>
+                <div class="linewidth-btn" data-width="8" onclick="selectLineWidth(8)" data-tooltip="Extra Thick">
+                    <div style="height: 8px; background: currentColor; margin: 6px 0;"></div>
+                </div>
+                <div class="linewidth-btn" data-width="12" onclick="selectLineWidth(12)" data-tooltip="Super Thick">
+                    <div style="height: 12px; background: currentColor; margin: 4px 0;"></div>
+                </div>
+            </div>
+
+            <div class="section-title">Cursor Style</div>
+            <div class="cursor-group">
+                <div class="cursor-btn" data-cursor="default" onclick="selectCursor('default')" data-tooltip="Default Cursor">
+                    <i class="fas fa-mouse-pointer"></i> Default
+                </div>
+                <div class="cursor-btn active" data-cursor="crosshair" onclick="selectCursor('crosshair')" data-tooltip="Crosshair Cursor">
+                    <i class="fas fa-crosshairs"></i> Crosshair
+                </div>
+                <div class="cursor-btn" data-cursor="pencil" onclick="selectCursor('pencil')" data-tooltip="Pencil Cursor">
+                    <i class="fas fa-pencil-alt"></i> Pencil
+                </div>
+            </div>
+
+            <div class="section-title">Color</div>
+            <div class="color-input-wrapper">
+                <input type="color" id="colorPicker" value="#000000">
+                <span>Custom Color</span>
+            </div>
+            <div class="color-palette">
+                <!-- Color swatches will be added by JavaScript -->
+            </div>
+
+            <div class="section-title">Symmetry Group</div>
+            <div class="symmetry-container">
+                <div class="symmetry-group">
+                    <div class="symmetry-btn" data-group="1" onclick="selectGroup(1)" data-tooltip="p1">
+                        <input type="radio" name="group" id="g1"> p1
+                    </div>
+                    <div class="symmetry-btn" data-group="2" onclick="selectGroup(2)" data-tooltip="pg">
+                        <input type="radio" name="group" id="g2"> pg
+                    </div>
+                    <div class="symmetry-btn" data-group="3" onclick="selectGroup(3)" data-tooltip="pm">
+                        <input type="radio" name="group" id="g3"> pm
+                    </div>
+                    <div class="symmetry-btn" data-group="4" onclick="selectGroup(4)" data-tooltip="cm">
+                        <input type="radio" name="group" id="g4"> cm
+                    </div>
+                    <div class="symmetry-btn" data-group="5" onclick="selectGroup(5)" data-tooltip="p2">
+                        <input type="radio" name="group" id="g5"> p2
+                    </div>
+                    <div class="symmetry-btn" data-group="6" onclick="selectGroup(6)" data-tooltip="pgg">
+                        <input type="radio" name="group" id="g6"> pgg
+                    </div>
+                    <div class="symmetry-btn" data-group="7" onclick="selectGroup(7)" data-tooltip="pmm">
+                        <input type="radio" name="group" id="g7"> pmm
+                    </div>
+                    <div class="symmetry-btn" data-group="8" onclick="selectGroup(8)" data-tooltip="cmm">
+                        <input type="radio" name="group" id="g8"> cmm
+                    </div>
+                    <div class="symmetry-btn" data-group="9" onclick="selectGroup(9)" data-tooltip="pmg">
+                        <input type="radio" name="group" id="g9"> pmg
+                    </div>
+                    <div class="symmetry-btn" data-group="10" onclick="selectGroup(10)" data-tooltip="p4">
+                        <input type="radio" name="group" id="g10"> p4
+                    </div>
+                    <div class="symmetry-btn active" data-group="11" onclick="selectGroup(11)" data-tooltip="p4m">
+                        <input type="radio" name="group" id="g11" checked> p4m
+                    </div>
+                    <div class="symmetry-btn" data-group="12" onclick="selectGroup(12)" data-tooltip="p4g">
+                        <input type="radio" name="group" id="g12"> p4g
+                    </div>
+                    <div class="symmetry-btn" data-group="13" onclick="selectGroup(13)" data-tooltip="p3">
+                        <input type="radio" name="group" id="g13"> p3
+                    </div>
+                    <div class="symmetry-btn" data-group="14" onclick="selectGroup(14)" data-tooltip="p3m1">
+                        <input type="radio" name="group" id="g14"> p3m1
+                    </div>
+                    <div class="symmetry-btn" data-group="15" onclick="selectGroup(15)" data-tooltip="p31m">
+                        <input type="radio" name="group" id="g15"> p31m
+                    </div>
+                    <div class="symmetry-btn" data-group="16" onclick="selectGroup(16)" data-tooltip="p6">
+                        <input type="radio" name="group" id="g16"> p6
+                    </div>
+                    <div class="symmetry-btn" data-group="17" onclick="selectGroup(17)" data-tooltip="p6m">
+                        <input type="radio" name="group" id="g17"> p6m
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="canvas-container">
+            <canvas id="canvas" width="800" height="600">
+                Sorry, your browser doesn't support the canvas tag.
+            </canvas>
+            <div class="controls">
+                <button class="btn" id="undo" onclick="undo()" disabled>
+                    <i class="fas fa-undo btn-icon"></i> Undo
+                </button>
+                <button class="btn" id="redo" onclick="redo()" disabled>
+                    <i class="fas fa-redo btn-icon"></i> Redo
+                </button>
+                <button class="btn" id="clear" onclick="clearDrawing()" disabled>
+                    <i class="fas fa-trash-alt btn-icon"></i> Clear
+                </button>
+                <button class="btn" id="savebtn" disabled>
+                    <i class="fas fa-save btn-icon"></i> Save
+                </button>
+                <button class="btn" id="loadbtn">
+                    <i class="fas fa-folder-open btn-icon"></i> Load
+                </button>
+            </div>
+            <div class="loading-overlay">
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
