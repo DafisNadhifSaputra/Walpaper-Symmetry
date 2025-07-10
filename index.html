@@ -1,34 +1,10 @@
 <!DOCTYPE html>
-<!--
-    Web page written by David Eck, http://math.hws.edu/eck/index.html
-    You can do anything you like with this web page and with the code, but
-    if you use a substantial portion of it, you should include attribution
-    in the source code.
-    
-    June 2017: Added freehand drawing tool.
-    
-    November 2023: Some significant changes...
-        1) Added saving and loading local files.
-        2) For the groups p1 and p2, changed the handling of
-           fundamental regions that are non-rectangular parallelograms.
-           Previously, an Angle was specified, but that never really
-           worked correctly.  Now, a Row Offset gives the amount by which
-           one row of duplicates is horizontally offset from the previous
-           row.  Row Offset zero gives a rectangular fundamental region.
-        3) Values for translation1, translation2, and row offset can now
-           only change when "Apply" button is clicked or Enter is typed
-           in an input box (or as part of a file load).  Previously, they
-           could change whenever drawAll() was called.
-        4) The default tool when the app is opened is now the Freehand
-           tool, and the default group is p4m, so someone who just
-           starts drawing sees something more interesting.
-        5) The default 2nd Translation is now equal to Translation.
-           (Previously, the values were 100 and 150, now both are 150.)
--->
 <html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="author" content="Dafis Nadhif Saputra">
+<meta name="copyright" content="© 2025 Dafis Nadhif Saputra. All rights reserved.">
 <title>Wallpaper Symmetry</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style type="text/css">
@@ -541,6 +517,30 @@ label {
     border-color: var(--primary-color);
     transform: translateY(0) scale(1);
     box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+}
+
+/* Copyright Footer */
+.copyright-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background-color: var(--header-bg);
+    color: var(--header-text);
+    text-align: center;
+    padding: 8px 16px;
+    font-size: 12px;
+    z-index: 1000;
+    border-top: 1px solid var(--border-color);
+}
+
+.copyright-footer a {
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+.copyright-footer a:hover {
+    text-decoration: underline;
 }
 
 </style>
@@ -2133,6 +2133,11 @@ window.clearDrawing = clearDrawing;
         </div>
     </div>
 </div>
+
+<!-- Copyright Footer -->
+<footer class="copyright-footer">
+    © 2025 <strong>Dafis Nadhif Saputra</strong>. All rights reserved.
+</footer>
 
 </body>
 </html>
