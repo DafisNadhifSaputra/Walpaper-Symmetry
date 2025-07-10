@@ -125,10 +125,6 @@ Contributions, issues, and feature requests are welcome! Feel free to check the 
 - [ ] Collaborative drawing
 - [ ] More symmetry patterns
 - [ ] Export to different formats (SVG, PDF)
-
-## 📸 Screenshots
-*Add screenshots of your application here to showcase its features*
-
----
+      
 
 **Enjoy creating beautiful symmetrical artwork!** 🎨✨
